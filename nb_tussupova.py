@@ -1,79 +1,71 @@
-import pandas as pd
+from math import log
+import arff
+import warnings
 import numpy as np
-from collections import Counter
-from scipy.io import arff
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+warnings.filterwarnings('ignore')
 
-with open("weather.nominal.arff", 'r') as f:
-	data, meta = arff.loadarff(f)
-with open("soybean.arff", 'r') as f:
-	data, meta = arff.loadarff(f)
+def train(x_train, y_train):
+    #frequency = sum of frequency of equivalent number / total number of each class
+    d = {}
+    classes = set(y_train)
+    for cl in classes:
+        d[cl] = {}
+        x_c = x_train[y_train == cl]
+        m, n = x_c.shape
+        for j in range(n):
+            x_class = set(x_c[:, j])
+            d[cl][j] = {}
+            for x in x_class:
+                f = 0
+                for t in range(len(x_c[:, j])):
+                    if x == x_c[t, j]:
+                        f += 1
+                d[cl][j][x] = f
+    return d
 
 
-class Ftr:
+def test(x_test, d):
+    s = []
+    for x in x_test:
+        c = []
+        for key, value in d.items():
+            p = 0
+            for i, j in enumerate(x):
+                for k in range(len(value)):
+                    if i == k:
+                        if j not in value[k]:
+                            num = 1e-5
+                        else:
+                            num = value[k][j]
+                        class_num = sum([v for k, v in value[i].items()])
+                        p += log(num/class_num)
+            c.append(p)
+        s.append(np.argmax(c))
+    return s
 
-	def __init__(self, data, name=None, bin_width=None):
-		self.name = name
-		self.bin_width = bin_width
-		if bin_width:
-			self.min, self.max = min(data), max(data)
-			bins = np.arange((self.min // bin_width) * bin_width, 
-				(self.max // bin_width) * bin_width, bin_width)
-			freq, bins = np.histogram(data, bins)
-			self.freq_dict = dict(zip(bins, freq))
-			self.freq_sum = sum(freq)
-		else:
-			self.freq_dict = dict(Counter(data))
-			self.freq_sum = sum(self.freq_dict.values())
-		
-	def frequency(self, value):
-		if self.bin_width:
-			value = (value // self.bin_width) * self.bin_width
-		if value in self.freq_dict:
-			return self.freq_dict[value]
-		else:
-			return 0
 
-class NaiveBayes():
-	
-	def __init__(self, name, *features):
-			self.features = features
-			self.name = name
-			
-	def probability(self,ftr_value, ftr): 
-  
-		if ftr.freq_sum == 0:
-			return 0
-		else:
-			return ftr.frequency(ftr_value) / ftr.freq_sum
+def load_data(name, train_size):
+    #Eden's load data function
+    data = arff.load(open('%s.arff' % name, 'r'))
+    data = np.array(pd.DataFrame(data['data']).dropna())
+    label_encoder = LabelEncoder()
+    encoded = np.zeros(data.shape)
+    for i in range(len(data[0])):
+        encoded[:, i] = label_encoder.fit_transform(data[:, i])
+    x, y = encoded[:, :-1], encoded[:, -1]
+    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=1, train_size=train_size)
+    return x_train, x_test, y_train, y_test
 
-class Classificier:
-	
-	def __init__(self, *nbclasses):
-		self.nbclasses = nbclasses
-		
-		
-	def prob(self, *d, best_only=True):
-		
-		nbclasses = self.nbclasses
-		probability_list = []
-		for NaiveBayes in nbclasses:            
-			ftrs = NaiveBayes.features
-			prob = 1
-			for i in range(len(ftrs)):
-				prob *= NaiveBayes.probability(d[i], ftrs[i])
-			  
-		probability_list.append( (prob,  NaiveBayes.name) )
-		prob_values = [f[0] for f in probability_list]
-		prob_sum = sum(prob_values)
-		if prob_sum==0:
-			number_classes = len(self.nbclasses)
-			pl = []
-			for prob_element in probability_list:
-				pl.append( ((1 / number_classes), prob_element[1]))
-			probability_list = pl
-		else:
-			probability_list = [ (p[0] / prob_sum, p[1])  for p in probability_list]
-		if best_only:
-			return max(probability_list)
-		else:
-			return probability_list
+
+if __name__ == '__main__':
+    for name in ['weather', 'soybean']:
+        x_train, x_test, y_train, y_test = load_data(name, 0.7)
+        d = train(x_train, y_train)
+        s = test(x_test, d)
+        acc = accuracy_score(s, y_test)
+        print("accuracy score:")
+        print(name, acc)
