@@ -8,6 +8,6 @@ Naive Bayes implementation in python.
 
 Data: soybean.arff and weather.arff
 
-#LW_ML
+# LW_ML
 Machine Learning Labworks
 
